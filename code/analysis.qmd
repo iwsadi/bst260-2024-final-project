@@ -1,0 +1,337 @@
+---
+title: "COVID-19 Data Analysis"
+format: html
+date: 2024-10-11
+names: Yinjie Wu
+---
+
+First, we need to load the **`dat`** object, which contains the fully joined data for all weeks and states during 2020-2021.
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(ggrepel)
+library(tidyverse)
+
+# Load the dataset from the RDS file in the data directory
+dat <- readRDS("../data/dat.rds")
+
+# Check the first few rows of the data to ensure it loaded correctly
+head(dat)
+
+```
+
+10. Plot a trend plot for cases, hospitalizations and deaths. Plot rates per $100,000$ people. Place the plots on top of each other.
+
+As the question described, we have cases, hospitalizations, and deaths per 100,000 people across various US states over time. The data appears to cover a time span from early 2020 to early 2022, with the x-axis showing dates and the y-axis showing rates per 100,000 people. However, we have some missing data at the start, most noably for hospitalization rate, no data until the end of July 2020.
+
+```{r}
+# a bit of fixing dataframe
+dat <- dat |>
+  mutate(
+    series_complete = as.numeric(series_complete),
+    booster = as.numeric(booster),
+    population = as.numeric(population),
+    cases = as.numeric(cases),
+    hosp = as.numeric(hosp),
+    deaths = as.numeric(deaths),
+    date = as.Date(date)
+  )
+
+Q10 <- dat |>
+  group_by(date, state, population) |>
+  summarise(
+    cases_rate = sum(cases, na.rm = TRUE) / (population / 100000),
+    hosp_rate = sum(hosp, na.rm = TRUE) / (population / 100000),
+    deaths_rate = sum(deaths, na.rm = TRUE) / (population / 100000),
+    .groups = "drop"
+  ) |>
+  pivot_longer(
+    cols = c(cases_rate, hosp_rate, deaths_rate),
+    names_to = "metric",
+    values_to = "rate"
+  ) |>
+  ggplot(aes(x = date, y = rate, color = state)) +
+  geom_line() +
+  facet_wrap(~metric, scales = "free_y", ncol = 1) +  # Use 'free_y' for better scaling of the y-axes
+  labs(
+    title = "Trend for COVID-19 Cases, Hospitalizations, and Deaths per 100,000 People",
+    x = "Date",
+    y = "Rate per 100,000"
+  ) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
+  theme_minimal()+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) 
+print(Q10)
+ggsave("../figs/Q10.png",plot = Q10)
+
+```
+
+11. To determine when vaccination started and when most of the population was vaccinated, compute the percent of the US population (including DC and Puerto Rico) were vaccinated by date. Do the same for the booster. Then plot both percentages.
+
+Plot shows the COVID-19 vaccination timeline in the US, displaying the percentage of the population vaccinated over time. It compares Series Complete (%) (blue line) and Booster (%) (red line) from early 2020 to early 2022
+
+```{r}
+Q11 <- dat |>
+  group_by(date) |>
+  summarise(
+    total_series_complete = sum(series_complete, na.rm = TRUE),
+    total_booster = sum(booster, na.rm = TRUE),
+    total_population = sum(population, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  # Calculate the percentage of the population vaccinated
+  mutate(
+    series_complete_pct = (total_series_complete / total_population) * 100,
+    booster_pct = (total_booster / total_population) * 100
+  ) |>
+  select(date, series_complete_pct, booster_pct) |>
+  pivot_longer(
+    cols = c(series_complete_pct, booster_pct),
+    names_to = "vaccination_type",
+    values_to = "percent"
+  ) |>
+  mutate(
+    vaccination_type = case_when(
+      vaccination_type == "series_complete_pct" ~ "Series Complete %",
+      vaccination_type == "booster_pct" ~ "Booster %"
+    )
+  ) |>
+  ggplot( aes(x = date, y = percent, color = vaccination_type)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "COVID-19 Vaccination Timeline in the US",
+    x = "Date",
+    y = "Percentage of Population Vaccinated (%)",
+    color = "Vaccination Type"
+  ) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(Q11)
+ggsave("../figs/Q11.png",plot = Q11)
+
+```
+
+12. Describe the distribution of vaccination rates on July 1, 2021.
+
+The plot shows the distribution of Series Complete Vaccination Rates across states for MMWR Week 26, 2021。 The histogram shows a somewhat bimodal shape, with 2 peaks, at around 45% and 55%, there is no booster yet, so 0% for boosters.
+
+```{r}
+
+july_data <- dat |>
+  filter(mmwr_year == 2021, mmwr_week == 26) |>
+  mutate(
+    series_complete_pct = (series_complete / population) * 100,
+    booster_pct = (booster / population) * 100
+  )
+
+# Pivot data to long format
+july_data_long <- july_data |>
+  pivot_longer(
+    cols = c(series_complete_pct, booster_pct),
+    names_to = "vaccination_type",
+    values_to = "percent"
+  )
+
+
+# Plot using facet_wrap to put the graphs side by side
+Q12 <- ggplot(july_data_long, aes(x = percent)) +
+  geom_histogram() +
+  facet_wrap(~vaccination_type, scales = "free_y", ncol=1) +
+  labs(
+    title = "Distribution of Vaccination Rates Across States (MMWR Week 26, 2021)",
+    x = "Vaccination Rate (%)",
+    y = "Number of States"
+  ) +
+  scale_x_continuous(limits = c(0, 100)) +
+  theme_minimal()
+
+print(Q12)
+ggsave("../figs/Q12.png",plot = Q12)
+
+```
+
+13. Is there a difference across region? Discuss what the plot shows?
+
+This question is a bit of confusing, if we thinking about vaccination rates between regions, they differ but not that much (the first figure below). If we looking for the distribution of vaccination rates across states for each region, yes the distribution looks different, however, each region only has a few state so it is really hard to see a clear distribution in this setting.
+
+```{r}
+# Summarize population and vaccinated counts for each region
+region_summary <- july_data |>
+  group_by(region) |>
+  summarise(
+    total_population = sum(population, na.rm = TRUE),
+    total_series_complete = sum(series_complete, na.rm = TRUE),
+    total_booster = sum(booster, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    series_complete_rate = (total_series_complete / total_population) * 100,
+    booster_rate = (total_booster / total_population) * 100
+  )
+region_summary_long <- region_summary |>
+  pivot_longer(
+    cols = c(series_complete_rate, booster_rate),
+    names_to = "vaccination_type",
+    values_to = "rate"
+  )
+
+
+Q13a <- ggplot(region_summary_long, aes(x = reorder(region, -rate), y = rate, fill = vaccination_type)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Vaccination Rates by Region (MMWR Week 26, 2021)",
+    x = "Region",
+    y = "Vaccination Rate (%)",
+    fill = "Vaccination Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(Q13a)
+ggsave("../figs/Q13a.png",plot = Q13a)
+
+```
+
+Distributions of vaccination rates across states for each region.
+
+```{r}
+
+# Filter the data to include only series_complete_pct
+series_complete_data <- july_data_long |>
+  filter(vaccination_type == "series_complete_pct")
+# Plot vaccination rates for series_complete_pct by region
+Q13b <- ggplot(series_complete_data, aes(x = percent, fill = region)) +
+  geom_histogram(binwidth = 5, color = "black", alpha = 0.7) +
+  facet_wrap(~region) +
+  labs(
+    title = "Distribution of Series Complete Vaccination Rates Across Regions (MMWR Week 26, 2021)",
+    x = "Series Complete Vaccination Rate (%)",
+    y = "Number of States"
+  ) +
+  scale_x_continuous(limits = c(0, 100)) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Remove the legend
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+print(Q13b)
+ggsave("../figs/Q13b.png",plot = Q13b)
+
+```
+
+14. Using the two previous figures, identify two time periods that meet the following criteria:
+
+-   A significant COVID-19 wave occurred across the United States.
+-   A sufficient number of people had been vaccinated.
+
+Next, follow these steps:
+
+-   For each state, calculate the **COVID-19 deaths per day per 100,000 people** during the selected time period.
+-   Determine the **vaccination rate (primary series)** in each state as of the last day of the period.
+-   Create a scatter plot to visualize the relationship between these two variables:
+    -   The **x-axis** should represent the vaccination rate.
+    -   The **y-axis** should represent the deaths per day per 100,000 people.
+
+First Time Period (for series complete vaccination): From July 2021 (MMWR Week 26, 2021) to Jan 2022 (MMWR Week 4, 2022). The plot includes US states represented as points, with the x-axis showing vaccination rates (%) and the y-axis showing COVID-19 deaths per day per 100,000 people. States are color-coded by region, and the trend line indicates a negative correlation between vaccination rates and death rates.
+
+This scatter plot shows that higher vaccination rates are associated with lower COVID-19 death rates across US states
+
+```{r}
+
+# Filter data for the selected time periods using MMWR year and week
+Q14 <- dat |>
+  filter(
+    (mmwr_year == 2021 & mmwr_week >= 26) | 
+    (mmwr_year == 2022 & mmwr_week <= 4)
+  ) |>
+  mutate(
+    series_complete_pct = (series_complete / population) * 100
+  ) |>
+
+# Calculate COVID-19 deaths per day per 100,000 people using MMWR weeks
+  group_by(state, region) |>
+  summarise(
+    total_deaths = sum(deaths, na.rm = TRUE),
+    total_population = mean(population, na.rm = TRUE),
+    weeks = n_distinct(mmwr_year, mmwr_week),  # Number of unique weeks in the period
+    deaths_per_day_per_100k = (total_deaths / (weeks*7)) / (total_population / 100000),
+    series_complete_rate = max(series_complete_pct, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  ggplot(aes(x = series_complete_rate, y = deaths_per_day_per_100k, color = region)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_text_repel(aes(label = state), size = 3) +  # Add state abbreviation labels
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +
+  labs(
+    title = "Relationship Between Vaccination Rate and COVID-19 Deaths (Per Day Per 100k)",
+    x = "Vaccination Rate (%)",
+    y = "Deaths per Day per 100,000 People",
+    color = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) 
+
+
+print(Q14)
+ggsave("../figs/Q12.png",plot = Q14)
+
+```
+
+Second Time Period (for booster): From Oct 2021 (MMWR Week 39, 2021) to Jan 2022 (MMWR Week 4, 2022). This scatter plot shows the relationship between booster vaccination rates (%) and COVID-19 deaths per day per 100,000 people across US states. While there is a slight downward trend indicating that higher booster rates correlate with lower death rates, the variance is high, meaning the relationship is not consistent across all states. States are color-coded by region, and the trend line shows the general negative association.
+
+```{r}
+# Filter data for the selected time periods using MMWR year and week
+Q15 <- dat |>
+  filter(
+    (mmwr_year == 2021 & mmwr_week >= 39) |
+    (mmwr_year == 2022 & mmwr_week <= 4)
+  ) |>
+  mutate(
+    booster_pct = (booster / population) * 100
+  ) |>
+# Calculate COVID-19 deaths per day per 100,000 people using booster rates
+  group_by(state, region) |>
+  summarise(
+    total_deaths = sum(deaths, na.rm = TRUE),
+    total_population = mean(population, na.rm = TRUE),
+    weeks = n_distinct(mmwr_year, mmwr_week),  # Number of unique weeks in the period
+    deaths_per_week_per_100k = (total_deaths / weeks) / (total_population / 100000),
+    booster_rate = max(booster_pct, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(deaths_per_day_per_100k = deaths_per_week_per_100k / 7) |>
+
+
+# Scatter plot for booster rate vs. deaths per day per 100,000 people
+  ggplot( aes(x = booster_rate, y = deaths_per_day_per_100k, color = region)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_text_repel(aes(label = state), size = 3) +  # Add state abbreviation labels
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +
+  labs(
+    title = "Relationship Between Booster Rate and COVID-19 Deaths (Per Day Per 100k)",
+    x = "Booster Rate (%)",
+    y = "Deaths per Day per 100,000 People",
+    color = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) 
+
+print(Q15)
+ggsave("../figs/Q15.png",plot = Q15)
+
+```
