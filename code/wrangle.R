@@ -13,7 +13,7 @@ script_dir <- dirname(rstudioapi::getActiveDocumentContext()$path)
 setwd(script_dir)
 source("funcs.R")
 # census key
-census_key <- readRDS("census_key.rds")
+#census_key <- readRDS("census_key.rds")
 
 
 
@@ -225,6 +225,7 @@ pop_2014 <- response |> resp_body_json(simplifyVector = TRUE) |>
   mutate(year = 2014) |>
   mutate(across(-state_name, as.numeric)) |>
   mutate(state = state.abb[match(state_name, state.name)]  ) |>
+  mutate(state_name = ifelse(state_name == "Puerto Rico Commonwealth", "Puerto Rico", state_name)) |>
   mutate(
     state= case_when (state_name == "Puerto Rico"~"PR",
                       state_name == "District of Columbia" ~ "DC",
@@ -243,16 +244,37 @@ population_combined <- bind_rows(
 population_combined <- population_combined %>%
   arrange(year, state_name)
 
+# Cases
+cases_url <- "https://data.cdc.gov/resource/pwn4-m3yp.json"
+cases_raw <- get_cdc_data(cases_url)
+cases <- cases_raw |>
+  mutate(       
+    cases = parse_number(new_cases),
+    date = as_date(ymd_hms(end_date))
+  ) |>
+  filter(state %in% population_combined$state) |>
+  mutate(
+    mmwr_week = epiweek(date),
+    mmwr_year = epiyear(date)
+  ) |>
+  # Keep what we need and arrange
+  select(state, mmwr_year, mmwr_week, cases) |>
+  arrange(state, mmwr_year, mmwr_week) |>
+  rename(year = mmwr_year)
 
-
-dat_full <- dat_full %>%
+dat_final <- dat_full %>%
+  filter (state_name != "New York City")|>
   mutate(year = as.numeric(year))|>
+  mutate(mmwr_week = as.numeric(mmwr_week))|>
   left_join(
     population_combined %>% select(year, state_name, population, state),
     by = c("year", "state_name")
   )|>
-  relocate(week_ending_date, .before = total_deaths)
-
+  relocate(week_ending_date, .before = total_deaths) |>
+  left_join(
+    cases %>% select(state, year, mmwr_week, cases),  
+    by = c("state", "year", "mmwr_week")             
+  )
 
 
 
@@ -273,4 +295,5 @@ population_combined <-left_join(population_combined, regions, by = "state_name")
 
 
 # Save the joined dataset to an RDS file in the data directory
-saveRDS(dat_full, "../data/dat.rds")
+saveRDS(dat_final, "../data/dat.rds")
+
