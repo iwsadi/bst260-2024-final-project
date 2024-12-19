@@ -1,0 +1,35 @@
+---
+title: "BST_260_Final_Project"
+format: pdf
+editor: visual
+names: Yinjie Wu, Xinran Yu
+---
+
+#Library
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(ggrepel)
+library(tidyverse)
+```
+
+#Load dataset
+
+```{r}
+# Load the dataset from the RDS file in the data directory
+dat <- readRDS("../data/dat.rds")
+
+# Check the first few rows of the data to ensure it loaded correctly
+head(dat)
+```
+
+```{r}
+pan_dat <- dat |>
+  filter(year >= 2020 & year <= 2023) |>
+  filter(!is.na(covid_19_deaths))
+  
+  
+```
+
