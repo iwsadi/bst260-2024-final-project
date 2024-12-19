@@ -5,7 +5,7 @@ editor: visual
 names: Yinjie Wu, Xinran Yu
 ---
 
-#Library
+# Library
 
 ```{r}
 library(dplyr)
@@ -13,23 +13,104 @@ library(ggplot2)
 library(readr)
 library(ggrepel)
 library(tidyverse)
+library(excessmort)
+library(purrr)
 ```
-
-#Load dataset
 
 ```{r}
 # Load the dataset from the RDS file in the data directory
 dat <- readRDS("../data/dat.rds")
 
-# Check the first few rows of the data to ensure it loaded correctly
-head(dat)
+dat <- dat |>
+  mutate(across(c(total_deaths, covid_19_deaths, population, cases),as.numeric)) |>
+  filter(!is.na(total_deaths), !is.na(population)) |>
+  rename(
+    date = week_ending_date,   # Rename weekly date column
+    outcome = total_deaths     # Rename total deaths to outcome
+  ) |>
+  mutate(
+    date = as.Date(date),      # Ensure date is in proper format
+    outcome = as.integer(outcome)  # Ensure outcome is integer
+  ) |>
+  arrange(state_name, date)   # Sort by state and date
 ```
 
 ```{r}
-pan_dat <- dat |>
-  filter(year >= 2020 & year <= 2023) |>
-  filter(!is.na(covid_19_deaths))
-  
-  
+exclude_dates <- seq(as.Date("2020-01-01"), as.Date("2023-12-31"), by = "week")
+state_fits <- dat |>
+  group_by(state_name) |>
+  group_split() |>
+  set_names(unique(dat$state_name)) |>
+  map(~ excess_model(
+    counts = .x,
+    start = min(.x$date),        
+    end = max(.x$date),          
+    exclude = exclude_dates,     # Exclude 2020–2024 dates
+    model = "quasipoisson",      # Recommended for weekly data
+    weekday.effect = FALSE,      # Turn off weekday effect for weekly data
+    keep.counts = T
+  ))
+
 ```
 
+```{r}
+start_date <- as.Date("2020-01-01")
+end_date <- as.Date("2023-12-31")
+
+excess_mortality_all_states <- map_dfr(
+  state_fits, 
+  ~ excess_cumulative(fit = .x, start = start_date, end = end_date),
+  .id = "state_name"  # Add a column to identify the state
+) |>
+  group_by(state_name) |>
+  mutate(
+    weekly_observed = observed - lag(observed),
+    weekly_observed = ifelse(is.na(weekly_observed), observed, weekly_observed)
+  )|>
+  rename(cum_excess = observed,
+         weekly_excess = weekly_observed) |>
+  select(-c(sd,fitted,se))
+```
+
+```{r}
+excess_mortality <- excess_mortality_all_states |>
+  left_join(dat, by = c("state_name", "date")) 
+
+```
+
+```{r}
+#test with cor.test
+correlation <- excess_mortality |>
+  filter(!is.na(weekly_excess), !is.na(covid_19_deaths))
+cor.test(correlation$weekly_excess, correlation$covid_19_deaths)
+
+#test with linear regression
+regression_model <- lm(weekly_excess ~ covid_19_deaths, data = correlation)
+
+summary(regression_model)
+
+```
+
+```{r}
+# Filter data to include only up to the end of 2023
+correlation |>
+  filter(date <= as.Date("2023-12-31")) |>
+  ggplot(aes(x = date)) +
+    geom_area(aes(y = weekly_excess, fill = "Excess Mortality"), linewidth = 1,alpha = 0.4) +  # Excess Mortality
+    geom_area(aes(y = covid_19_deaths, fill = "COVID-19 Deaths"), linewidth = 1,alpha = 0.4) +  # COVID-19 Deaths
+    labs(
+      title = "Overlap of Weekly COVID-19 Deaths and Excess Mortality",
+      x = "Date",
+      y = "Number of Deaths",
+      fill = "Legend"
+    ) +
+    scale_fill_manual(values = c("Excess Mortality" = "blue", "COVID-19 Deaths" = "red")) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+      axis.title = element_text(size = 12),
+      legend.position = "top"
+    ) +
+    facet_wrap(~state_name)
+
+```
