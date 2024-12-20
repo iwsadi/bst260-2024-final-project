@@ -489,3 +489,8 @@ ggplot(excess_rate_by_wave_filtered,
 
 ```
 
+```{r}
+excess_plot(state_fits$California)
+expected_plot(state_fits$California)
+```
+
