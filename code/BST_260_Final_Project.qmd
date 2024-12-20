@@ -15,6 +15,8 @@ library(ggrepel)
 library(tidyverse)
 library(excessmort)
 library(purrr)
+library(tidytext)
+
 ```
 
 # Q1 Divide the pandemic period, January 2020 to December 2024 into waves. Justify your choice with data visualization.
@@ -73,8 +75,6 @@ ggplot(covid_summary, aes(x = week_ending_date, y = total_cases)) +
        y = "Total Cases") +
   theme_minimal()
 ```
-
-
 
 ```{r}
 # Reshape the data to long format for faceting
@@ -142,18 +142,32 @@ ggplot(covid_summary_long, aes(x = week_ending_date, y = value)) +
 ```
 
 ```{r}
+# Define wave labels and positions
+wave_labels <- data.frame(
+  wave = c("1", "2", "3", "4", "5", "6", "7", "8"),
+  x = as.Date(c("2020-05-10", "2020-08-15", "2021-01-01", "2021-09-01",
+                "2022-02-01", "2022-07-01", "2023-01-01", "2023-11-15")),
+  y = 40000 # Adjust y-position for visibility
+)
+
+# Base plot with wave numbers
 ggplot(covid_summary_long, aes(x = week_ending_date, y = value)) +
   geom_line(aes(color = metric), size = 1) +
   geom_vline(xintercept = as.numeric(mmwr_weeks), linetype = "dashed", color = "black") +
+  geom_text(data = wave_labels, aes(x = x, y = y, label = wave), 
+            inherit.aes = FALSE, color = "black", size = 4, fontface = "bold") +
   scale_color_manual(values = c("COVID-19 Deaths" = "blue", "COVID-19 Cases" = "red")) +
-  facet_wrap(~ metric, scales = "free_y", ncol = 1) + # Separate panels, independent scales
-  scale_x_date(date_breaks = "3 months", date_labels = "%b-%Y") + # Reduce x-axis labels
-  labs(title = "COVID-19 Deaths and Cases Over Time",
+  facet_wrap(~ metric, scales = "free_y", ncol = 1) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b-%Y") +
+  labs(title = "COVID-19 Deaths and Cases Over Time with Waves",
        x = "Week Ending Date (approx. MMWR Weeks)",
        y = "Count",
        color = "Metric") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
 ```
 
 ```{r}
@@ -190,6 +204,62 @@ for (w in waves) {
 ```
 
 ```{r}
+# Filter data for waves 3, 5, and 7
+selected_waves <- c("Wave 3", "Wave 5", "Wave 7")
+
+# Compute death rates by state for selected waves
+death_rate_selected <- dat_covid %>%
+  filter(wave %in% selected_waves) %>%  # Select specific waves
+  group_by(wave, state_name) %>%
+  summarize(total_deaths = sum(covid_19_deaths, na.rm = TRUE),
+            total_population = sum(population, na.rm = TRUE),
+            death_rate = (total_deaths / total_population) * 100000, # Death rate per 100,000
+            .groups = "drop")
+
+# Plot death rates for Waves 3, 5, and 7 using facets
+ggplot(death_rate_selected, aes(x = reorder(state_name, -death_rate), y = death_rate, fill = wave)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~ wave, scales = "free_y", ncol = 3) +  # Create separate panels for each wave
+  labs(title = "COVID-19 Death Rates by State for Waves 3, 5, and 7",
+       x = "State",
+       y = "Death Rate per 100,000") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8))  # Adjust text size for clarity
+
+```
+
+```{r}
+# Filter data for waves 3, 5, and 7
+selected_waves <- c("Wave 3", "Wave 5", "Wave 7")
+
+# Compute death rates by state for selected waves
+death_rate_selected <- dat_covid %>%
+  filter(wave %in% selected_waves) %>%  # Select specific waves
+  group_by(wave, state_name) %>%
+  summarize(total_deaths = sum(covid_19_deaths, na.rm = TRUE),
+            total_population = sum(population, na.rm = TRUE),
+            death_rate = (total_deaths / total_population) * 100000, # Death rate per 100,000
+            .groups = "drop") %>%
+  mutate(state_name = reorder_within(state_name, death_rate, wave))  # Order within facets
+
+# Plot with proper ordering within facets
+ggplot(death_rate_selected, aes(x = state_name, y = death_rate, fill = wave)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~ wave, scales = "free_y", ncol = 3) +  # Separate panels for waves 3, 5, and 7
+  scale_x_reordered() +  # Ensure proper ordering
+  labs(title = "COVID-19 Death Rates by State for Waves 3, 5, and 7",
+       x = "State",
+       y = "Death Rate per 100,000") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8))  # Adjust text size for clarity
+
+
+```
+
+
+```{r}
 # Compute average virulence (CFR) for each wave, excluding Wave 8
 virulence_summary <- dat_covid %>%
   filter(wave != "Wave 8") %>%
@@ -214,10 +284,6 @@ ggplot(virulence_summary, aes(x = wave, y = overall_cfr, fill = wave)) +
   theme_minimal()
 
 ```
-
-
-
-
 
 ```{r}
 # Load the dataset from the RDS file in the data directory
@@ -317,6 +383,35 @@ excess_mortality |>
 ```
 
 ```{r}
+# Filter data to include only California, Florida, and Texas up to the end of 2023
+selected_states <- c("California", "Florida", "Texas")
+
+excess_mortality %>%
+  filter(date <= as.Date("2023-12-31"), state_name %in% selected_states) %>%
+  ggplot(aes(x = date)) +
+    geom_area(aes(y = weekly_excess, fill = "Excess Mortality"), linewidth = 1, alpha = 0.4) +  # Excess Mortality
+    geom_area(aes(y = covid_19_deaths, fill = "COVID-19 Deaths"), linewidth = 1, alpha = 0.4) +  # COVID-19 Deaths
+    labs(
+      title = "Overlap of Weekly COVID-19 Deaths and Excess Mortality",
+      subtitle = "States: California, Florida, and Texas",
+      x = "Date",
+      y = "Number of Deaths",
+      fill = "Legend"
+    ) +
+    scale_fill_manual(values = c("Excess Mortality" = "blue", "COVID-19 Deaths" = "red")) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12),
+      axis.title = element_text(size = 12),
+      legend.position = "top"
+    ) +
+    facet_wrap(~state_name)
+
+```
+
+
+```{r}
 temp <- dat_covid |>
   select(state_name,week_ending_date, wave) |>
   rename(date = week_ending_date)
@@ -357,5 +452,40 @@ for (w in waves) {
     theme_minimal()
   print(p)
 }
+```
+
+```{r}
+# Filter to include only Wave 3, Wave 5, and Wave 7
+selected_waves <- c("Wave 3", "Wave 5", "Wave 7")
+
+excess_rate_by_wave_filtered <- excess_mortality %>%
+  filter(wave %in% selected_waves) %>% 
+  group_by(wave, state_name) %>%
+  summarize(total_deaths = sum(weekly_excess, na.rm = TRUE),
+            total_population = mean(population, na.rm = TRUE),
+            death_rate = (total_deaths / total_population) * 100000, # Death rate per 100,000
+            .groups = "drop") %>%
+  arrange(wave, desc(death_rate))
+
+# Plot death rates for Wave 3, Wave 5, and Wave 7 in one plot with facets
+ggplot(excess_rate_by_wave_filtered, 
+       aes(x = reorder_within(state_name, death_rate, wave), 
+           y = death_rate, fill = wave)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_x_reordered() + # Properly orders within each facet
+  facet_wrap(~ wave, ncol = 3, scales = "free_y") + # One row, three columns
+  labs(title = "Excess Mortality Rates by State for Waves 3, 5, and 7",
+       x = "State",
+       y = "Excess Death Rate per 100,000",
+       fill = "Wave") +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.y = element_text(size = 8),
+    legend.position = "none"
+  )
+
 ```
 

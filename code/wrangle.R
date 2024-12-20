@@ -263,34 +263,6 @@ cases <- cases_raw |>
   rename(year = mmwr_year)
 
 
-# deaths_url <- "https://data.cdc.gov/resource/r8kw-7aab.json"
-# deaths_raw <- get_cdc_data(deaths_url)
-# deaths <- deaths_raw |>
-#   # Filter rows to keep only states that exist in the population dataset
-#   filter(state %in% population$state_name) |>
-#   #  filter(!is.na(covid_19_deaths) ) |>
-#   # Convert full state names in `state_name` to abbreviations using `state.abb` and `state.name`
-#   mutate(state = state.abb[match(state, state.name)]) |>
-#   # Handle special cases for District of Columbia (DC) and Puerto Rico (PR)
-#   mutate(
-#     state = case_when(
-#       state == "District of Columbia" ~ "DC",
-#       state == "Puerto Rico" ~ "PR",
-#       TRUE ~ state
-#     )
-#   ) |>
-#   # Convert `week_ending_date` to a Date format using `ymd_hms` from lubridate
-#   mutate(date = as_date(ymd_hms(week_ending_date))) |>
-#   # Create new columns for MMWR week and year using lubridate functions `epiweek()` and `epiyear()`
-#   mutate(
-#     mmwr_week = epiweek(date),
-#     mmwr_year = epiyear(date)
-#   ) |>
-#   # Select relevant columns: state, MMWR year, MMWR week, and deaths
-#   select(state, mmwr_year, mmwr_week, covid_19_deaths) |>
-#   rename(deaths = covid_19_deaths) |>
-#   # Arrange by state, MMWR year, and week for easier analysis
-#   arrange(state, mmwr_year, mmwr_week)
 
 dat_final <- dat_full %>%
   filter (state_name != "New York City")|>
