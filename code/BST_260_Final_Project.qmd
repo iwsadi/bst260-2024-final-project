@@ -19,7 +19,7 @@ library(tidytext)
 
 ```
 
-# Q1 Divide the pandemic period, January 2020 to December 2024 into waves. Justify your choice with data visualization.
+# Q1 
 
 ```{r}
 dat <- readRDS("../data/dat.rds")
@@ -169,7 +169,7 @@ ggplot(covid_summary_long, aes(x = week_ending_date, y = value)) +
 
 
 ```
-
+# Q2
 ```{r}
 # Compute death rates by state for each wave
 death_rate_by_wave <- dat_covid %>%
@@ -258,7 +258,7 @@ ggplot(death_rate_selected, aes(x = state_name, y = death_rate, fill = wave)) +
 
 ```
 
-
+# Q3
 ```{r}
 # Compute average virulence (CFR) for each wave, excluding Wave 8
 virulence_summary <- dat_covid %>%
@@ -285,6 +285,7 @@ ggplot(virulence_summary, aes(x = wave, y = overall_cfr, fill = wave)) +
 
 ```
 
+# Q4
 ```{r}
 # Load the dataset from the RDS file in the data directory
 dat <- readRDS("../data/dat.rds")
@@ -322,6 +323,12 @@ state_fits <- dat |>
 ```
 
 ```{r}
+excess_plot(state_fits$California)
+expected_plot(state_fits$California)
+expected_diagnostic(state_fits$California)
+```
+
+```{r}
 start_date <- as.Date("2020-01-01")
 end_date <- as.Date("2023-12-31")
 
@@ -344,7 +351,6 @@ excess_mortality_all_states <- map_dfr(
 excess_mortality <- excess_mortality_all_states |>
   left_join(dat, by = c("state_name", "date")) |>
   filter(!is.na(weekly_excess), !is.na(covid_19_deaths))
-
 ```
 
 ```{r}
@@ -410,7 +416,7 @@ excess_mortality %>%
 
 ```
 
-
+# Q5
 ```{r}
 temp <- dat_covid |>
   select(state_name,week_ending_date, wave) |>
@@ -489,8 +495,5 @@ ggplot(excess_rate_by_wave_filtered,
 
 ```
 
-```{r}
-excess_plot(state_fits$California)
-expected_plot(state_fits$California)
-```
+
 
